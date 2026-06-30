@@ -2085,11 +2085,21 @@ Dale feedback personalizado y motivador. Mencioná si está haciendo bien en cua
     })
   });
   
+  if (!res.ok) {
+    throw new Error(`API respondió con error ${res.status}`);
+  }
+  
   const data = await res.json();
-  return data.content?.[0]?.text || 'Sin feedback disponible.';
+  const text = data.content?.find(b => b.type === 'text')?.text;
+  
+  if (!text) {
+    throw new Error('Respuesta sin texto');
+  }
+  
+  return text;
 }
 
-async function generateDailyTip() {
+async function generateDailyTip(retryCount = 0) {
   const today = getTodayStr();
   const todayLogs = logs.filter(l => l.date === today);
   
@@ -2100,21 +2110,62 @@ async function generateDailyTip() {
     return;
   }
   
+  if (retryCount === 0) {
+    tipEl.textContent = 'Pensando un consejo para vos...';
+  }
+  
   try {
-    const prompt = `Generá un consejo personalizado para hoy para esta usuaria que está tratando de bajar de peso:
+    const recentFood = logs.filter(l => l.type === 'food').slice(-3).map(l => l.description).join(' | ') || 'sin registros recientes';
+    const recentExercise = logs.filter(l => l.type === 'exercise').slice(-3).map(l => l.name).join(', ') || 'sin registros recientes';
+    const weightLogs = logs.filter(l => l.type === 'weight').sort((a,b) => new Date(a.date) - new Date(b.date));
+    const trend = weightLogs.length >= 2 ? (weightLogs[weightLogs.length-1].weight - weightLogs[0].weight).toFixed(1) : 'sin tendencia aún';
+    
+    const prompt = `Generá un consejo personalizado para HOY para esta usuaria que está tratando de bajar de peso:
 - Peso actual: ${getCurrentWeight()} kg, Meta: ${profile.targetWeight || 53} kg
-- Días registrados: ${logs.length}  
-- Hoy registró: ${todayLogs.length > 0 ? todayLogs.map(l => l.type).join(', ') : 'nada aún'}
-- Es invierno en Argentina y le cuesta no comer carbohidratos.
-- Practica ejercicio suave 3-4 veces por semana.
+- Cambio de peso desde que empezó: ${trend} kg
+- Días registrados en total: ${logs.length}
+- Hoy ya registró: ${todayLogs.length > 0 ? todayLogs.map(l => l.type).join(', ') : 'nada todavía'}
+- Últimas comidas registradas: ${recentFood}
+- Últimos ejercicios: ${recentExercise}
+- Es invierno en Argentina, le cuesta no comer carbohidratos (harinas, pan, fideos).
+- Practica ejercicio suave-moderado 3-4 veces por semana, tiene poco tiempo.
+- Prefiere cenar temprano (antes de las 20:00) y no comer nada después.
 
-Dé un consejo concreto, motivador y personalizado en 2 oraciones. Sin listas.`;
+Dale un consejo concreto, cálido y específico para HOY, basado en estos datos reales (no genérico). Máximo 2 oraciones. Sin listas, sin bullets.`;
     
     const tip = await getAIFeedback('tip', prompt, {});
-    tipEl.textContent = tip;
+    if (tip && tip.trim().length > 5) {
+      tipEl.textContent = tip;
+    } else {
+      throw new Error('Respuesta vacía');
+    }
   } catch(e) {
-    tipEl.textContent = 'Recordá tomar agua durante el día. Muchas veces el hambre es en realidad sed 💧';
+    console.error('Error generando tip:', e);
+    if (retryCount < 2) {
+      setTimeout(() => generateDailyTip(retryCount + 1), 1500);
+    } else {
+      tipEl.textContent = buildFallbackTip();
+    }
   }
+}
+
+function buildFallbackTip() {
+  const today = getTodayStr();
+  const todayLogs = logs.filter(l => l.date === today);
+  const hasFoodToday = todayLogs.some(l => l.type === 'food');
+  const hasExToday = todayLogs.some(l => l.type === 'exercise');
+  const streak = calculateStreak();
+  
+  if (!hasFoodToday && !hasExToday) {
+    return `Llevás ${streak} día${streak === 1 ? '' : 's'} seguidos registrando, ¡no cortes la racha! Cargá aunque sea tu desayuno cuando puedas 🌸`;
+  }
+  if (hasFoodToday && !hasExToday) {
+    return 'Ya registraste tus comidas de hoy, ¡buenísimo! Si te quedan ganas, unos minutos de ejercicio suave redondean el día 💪';
+  }
+  if (hasExToday && !hasFoodToday) {
+    return '¡Ya te moviste hoy! Ahora prestale atención a las comidas, sobre todo que la cena sea temprano como te gusta 🌙';
+  }
+  return `Vas muy bien, ya registraste todo hoy. Seguí así, la constancia es lo que más suma 🔥`;
 }
 
 // ===== GRÁFICOS =====
