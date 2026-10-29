@@ -1,8 +1,9 @@
 {
+  "id": "/GiseFit/",
   "name": "GiseFit — Tu progreso, tu ritmo",
   "short_name": "GiseFit",
   "description": "App personal de tracking de peso, medidas, comidas y ejercicio",
-  "start_url": "/",
+  "start_url": "/GiseFit/",
   "display": "standalone",
   "background_color": "#C96E8A",
   "theme_color": "#C96E8A",
@@ -20,5 +21,6 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "scope": "/GiseFit/"
 }
